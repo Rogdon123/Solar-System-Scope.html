@@ -1,0 +1,36 @@
+  <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">。
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手部交互太阳系 · Solar Hand Scope</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+    }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div id="camera-container">
+        <video id="input-video" autoplay playsinline muted></video>
+        <canvas id="overlay-canvas"></canvas>
+        <div id="gesture-hint">张开 = 放大 · 握拳 = 缩小 · 左手左滑逆时针、右滑顺时针 · 上下滑动 = 绕日俯仰 · 单指选星球 · 双指关闭信息</div>
+    </div>
+
+    <div id="info-panel" class="hidden">
+        <div id="info-title"></div>
+        <div id="info-content"></div>
+        <div id="info-close-hint">双指指向任意位置以关闭信息</div>
+    </div>
+
+    <div id="canvas-container"></div>
+    <div id="loading">正在启动摄像头与手部追踪…</div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
