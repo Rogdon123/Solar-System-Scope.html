@@ -69,7 +69,7 @@ let orbitPitch = Math.asin(initialCameraOffset.y / initialCameraOffset.length())
 // ============================================================
 // 3. 光照 + 星空
 // ============================================================
-scene.add(new THREE.AmbientLight(0x223344, 0.9));
+scene.add(new THREE.AmbientLight(0x405060, 1.05));
 const sunLight = new THREE.PointLight(0xffdd99, 2.5, 0, 0);
 sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
@@ -100,11 +100,109 @@ createStars();
 const planets = [];
 const clickableMeshes = [];
 
+function createSurfaceTexture(key) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 256;
+    const context = canvas.getContext('2d');
+    const image = context.createImageData(canvas.width, canvas.height);
+    const pixels = image.data;
+    const hash = (x, y, seed) => {
+        const value = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453;
+        return value - Math.floor(value);
+    };
+    const noise = (x, y, seed) => {
+        const x0 = Math.floor(x), y0 = Math.floor(y);
+        const fx = x - x0, fy = y - y0;
+        const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+        const top = THREE.MathUtils.lerp(hash(x0, y0, seed), hash(x0 + 1, y0, seed), sx);
+        const bottom = THREE.MathUtils.lerp(hash(x0, y0 + 1, seed), hash(x0 + 1, y0 + 1, seed), sx);
+        return THREE.MathUtils.lerp(top, bottom, sy);
+    };
+    const palettes = {
+        sun: [[190, 48, 7], [255, 195, 55]],
+        mercury: [[58, 55, 51], [184, 164, 137]],
+        venus: [[133, 66, 20], [255, 220, 143]],
+        earth: [[8, 39, 91], [43, 125, 83]],
+        mars: [[91, 38, 23], [229, 117, 65]],
+        jupiter: [[111, 58, 37], [235, 197, 149]],
+        saturn: [[132, 103, 58], [246, 224, 169]],
+        uranus: [[24, 105, 127], [153, 232, 236]],
+        neptune: [[20, 43, 112], [87, 157, 238]]
+    };
+    const [dark, light] = palettes[key];
+
+    for (let y = 0; y < canvas.height; y++) {
+        const latitude = y / canvas.height;
+        for (let x = 0; x < canvas.width; x++) {
+            const u = x / canvas.width;
+            const broad = noise(u * 7, latitude * 5, key.length);
+            const detail = noise(u * 31, latitude * 17, key.length + 4);
+            const fine = noise(u * 96, latitude * 48, key.length + 9);
+            const band = Math.sin(latitude * (key === 'jupiter' ? 100 : 62) + broad * 3.4);
+            let amount = 0.28 + broad * 0.5 + detail * 0.18;
+            let red, green, blue;
+
+            if (key === 'earth') {
+                const continent = broad * 0.72 + detail * 0.28 > 0.54;
+                const polar = Math.abs(latitude - 0.5) > 0.455;
+                const ocean = [8, 39, 91];
+                const land = polar ? [204, 218, 210] : [44 + detail * 46, 99 + broad * 58, 55 + detail * 24];
+                [red, green, blue] = continent ? land : ocean.map((value, index) => value + detail * [7, 17, 26][index]);
+                if (fine > 0.79 && !polar) [red, green, blue] = [207, 220, 224];
+            } else if (['jupiter', 'saturn', 'venus', 'uranus', 'neptune'].includes(key)) {
+                amount = 0.48 + band * 0.19 + broad * 0.25 + (fine - 0.5) * 0.12;
+                if (key === 'venus') amount = 0.42 + Math.sin(latitude * 34 + broad * 5) * 0.14 + detail * 0.35;
+                if (key === 'uranus' || key === 'neptune') amount = 0.5 + band * 0.1 + broad * 0.28;
+                [red, green, blue] = dark.map((value, index) => value + (light[index] - value) * amount);
+            } else {
+                [red, green, blue] = dark.map((value, index) => value + (light[index] - value) * amount);
+            }
+
+            const pixel = (y * canvas.width + x) * 4;
+            pixels[pixel] = red;
+            pixels[pixel + 1] = green;
+            pixels[pixel + 2] = blue;
+            pixels[pixel + 3] = 255;
+        }
+    }
+    context.putImageData(image, 0, 0);
+
+    if (key === 'mercury' || key === 'mars') {
+        for (let i = 0; i < 36; i++) {
+            const x = hash(i, 2, key.length) * canvas.width;
+            const y = 18 + hash(i, 7, key.length) * (canvas.height - 36);
+            const radius = 2 + hash(i, 13, key.length) * (key === 'mercury' ? 13 : 7);
+            context.beginPath();
+            context.arc(x, y, radius, 0, Math.PI * 2);
+            context.fillStyle = 'rgba(24, 20, 18, 0.2)';
+            context.fill();
+            context.beginPath();
+            context.arc(x - radius * 0.15, y - radius * 0.18, radius * 0.72, 0, Math.PI * 2);
+            context.strokeStyle = 'rgba(245, 220, 190, 0.22)';
+            context.lineWidth = Math.max(1, radius * 0.12);
+            context.stroke();
+        }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return texture;
+}
+
 function createSun() {
     const d = BODIES.sun;
+    const texture = createSurfaceTexture('sun');
     const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(d.radius, 48, 48),
-        new THREE.MeshStandardMaterial({ color: d.color, emissive: 0xff8822, emissiveIntensity: 1.2, roughness: 0.4 })
+        new THREE.MeshStandardMaterial({
+            map: texture,
+            emissive: 0xffffff,
+            emissiveMap: texture,
+            emissiveIntensity: 0.45,
+            roughness: 0.4
+        })
     );
     mesh.userData = { bodyKey: 'sun', ...d };
     scene.add(mesh);
@@ -123,7 +221,7 @@ function createPlanet(key) {
 
     const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(d.radius, 32, 32),
-        new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.65, metalness: 0.1 })
+        new THREE.MeshStandardMaterial({ map: createSurfaceTexture(key), roughness: 0.82, metalness: 0.02 })
     );
     mesh.userData = { bodyKey: key, ...d };
 
@@ -132,6 +230,23 @@ function createPlanet(key) {
     mesh.position.z = Math.sin(angle) * d.distance;
     scene.add(mesh);
     clickableMeshes.push(mesh);
+
+    if (key === 'saturn') {
+        const rings = new THREE.Mesh(
+            new THREE.RingGeometry(d.radius * 1.45, d.radius * 2.55, 96),
+            new THREE.MeshStandardMaterial({
+                color: 0xd7c394,
+                roughness: 0.95,
+                metalness: 0.02,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.78
+            })
+        );
+        rings.rotation.x = -Math.PI / 2;
+        rings.rotation.z = 0.12;
+        mesh.add(rings);
+    }
 
     // 轨道线
     const pts = [];
